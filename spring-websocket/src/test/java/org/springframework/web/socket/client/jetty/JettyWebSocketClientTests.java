@@ -5,7 +5,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -28,17 +28,18 @@ import org.eclipse.jetty.websocket.servlet.WebSocketServletFactory;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+
+import org.springframework.core.task.SimpleAsyncTaskExecutor;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.SocketUtils;
 import org.springframework.web.socket.WebSocketHandler;
+import org.springframework.web.socket.WebSocketHttpHeaders;
 import org.springframework.web.socket.WebSocketSession;
-import org.springframework.web.socket.adapter.JettyWebSocketHandlerAdapter;
-import org.springframework.web.socket.adapter.JettyWebSocketSession;
-import org.springframework.web.socket.adapter.TextWebSocketHandlerAdapter;
-import org.springframework.web.socket.support.WebSocketHttpHeaders;
+import org.springframework.web.socket.adapter.jetty.JettyWebSocketHandlerAdapter;
+import org.springframework.web.socket.adapter.jetty.JettyWebSocketSession;
+import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import static org.junit.Assert.*;
-
 
 /**
  * Tests for {@link JettyWebSocketClient}.
@@ -60,7 +61,7 @@ public class JettyWebSocketClientTests {
 
 		int port = SocketUtils.findAvailableTcpPort();
 
-		this.server = new TestJettyWebSocketServer(port, new TextWebSocketHandlerAdapter());
+		this.server = new TestJettyWebSocketServer(port, new TextWebSocketHandler());
 		this.server.start();
 
 		this.client = new JettyWebSocketClient();
@@ -83,7 +84,20 @@ public class JettyWebSocketClientTests {
 		WebSocketHttpHeaders headers = new WebSocketHttpHeaders();
 		headers.setSecWebSocketProtocol(Arrays.asList("echo"));
 
-		this.wsSession = this.client.doHandshake(new TextWebSocketHandlerAdapter(), headers, new URI(this.wsUrl)).get();
+		this.wsSession = this.client.doHandshake(new TextWebSocketHandler(), headers, new URI(this.wsUrl)).get();
+
+		assertEquals(this.wsUrl, this.wsSession.getUri().toString());
+		assertEquals("echo", this.wsSession.getAcceptedProtocol());
+	}
+
+	@Test
+	public void doHandshakeWithTaskExecutor() throws Exception {
+
+		WebSocketHttpHeaders headers = new WebSocketHttpHeaders();
+		headers.setSecWebSocketProtocol(Arrays.asList("echo"));
+
+		this.client.setTaskExecutor(new SimpleAsyncTaskExecutor());
+		this.wsSession = this.client.doHandshake(new TextWebSocketHandler(), headers, new URI(this.wsUrl)).get();
 
 		assertEquals(this.wsUrl, this.wsSession.getUri().toString());
 		assertEquals("echo", this.wsSession.getAcceptedProtocol());

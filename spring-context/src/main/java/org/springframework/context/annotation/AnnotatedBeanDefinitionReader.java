@@ -127,11 +127,15 @@ public class AnnotatedBeanDefinitionReader {
 		registerBean(annotatedClass, null, (Class<? extends Annotation>[]) null);
 	}
 
-	public void registerBean(Class<?> annotatedClass, Class<? extends Annotation>... qualifiers) {
+	public void registerBean(Class<?> annotatedClass,
+			@SuppressWarnings("unchecked") Class<? extends Annotation>... qualifiers) {
+
 		registerBean(annotatedClass, null, qualifiers);
 	}
 
-	public void registerBean(Class<?> annotatedClass, String name, Class<? extends Annotation>... qualifiers) {
+	public void registerBean(Class<?> annotatedClass, String name,
+			@SuppressWarnings("unchecked") Class<? extends Annotation>... qualifiers) {
+
 		AnnotatedGenericBeanDefinition abd = new AnnotatedGenericBeanDefinition(annotatedClass);
 		if (this.conditionEvaluator.shouldSkip(abd.getMetadata())) {
 			return;
@@ -143,10 +147,10 @@ public class AnnotatedBeanDefinitionReader {
 		AnnotationConfigUtils.processCommonDefinitionAnnotations(abd);
 		if (qualifiers != null) {
 			for (Class<? extends Annotation> qualifier : qualifiers) {
-				if (Primary.class.equals(qualifier)) {
+				if (Primary.class == qualifier) {
 					abd.setPrimary(true);
 				}
-				else if (Lazy.class.equals(qualifier)) {
+				else if (Lazy.class == qualifier) {
 					abd.setLazyInit(true);
 				}
 				else {

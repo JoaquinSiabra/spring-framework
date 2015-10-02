@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ import java.net.URI;
 import java.util.Properties;
 import javax.cache.CacheManager;
 import javax.cache.Caching;
-import javax.cache.spi.CachingProvider;
 
 import org.springframework.beans.factory.BeanClassLoaderAware;
 import org.springframework.beans.factory.DisposableBean;
@@ -32,7 +31,7 @@ import org.springframework.beans.factory.InitializingBean;
  * obtaining a pre-defined CacheManager by name through the standard
  * JCache {@link javax.cache.Caching} class.
  *
- * <p>Note: This class has been updated for JCache 0.11, as of Spring 4.0.
+ * <p>Note: This class has been updated for JCache 1.0, as of Spring 4.0.
  *
  * @author Juergen Hoeller
  * @since 3.2
@@ -75,8 +74,7 @@ public class JCacheManagerFactoryBean
 
 	@Override
 	public void afterPropertiesSet() {
-		CachingProvider provider = Caching.getCachingProvider();
-		this.cacheManager = provider.getCacheManager(
+		this.cacheManager = Caching.getCachingProvider().getCacheManager(
 				this.cacheManagerUri, this.beanClassLoader, this.cacheManagerProperties);
 	}
 

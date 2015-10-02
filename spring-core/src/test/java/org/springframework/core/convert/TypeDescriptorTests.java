@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.lang.annotation.Annotation;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -36,6 +37,7 @@ import java.util.Map;
 import java.util.Set;
 
 import org.junit.Test;
+
 import org.springframework.core.MethodParameter;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -49,6 +51,7 @@ import static org.junit.Assert.*;
  * @author Keith Donald
  * @author Andy Clement
  * @author Phillip Webb
+ * @author Sam Brannen
  */
 @SuppressWarnings("rawtypes")
 public class TypeDescriptorTests {
@@ -68,6 +71,7 @@ public class TypeDescriptorTests {
 	public Map<String, Integer> mapField = new HashMap<String, Integer>();
 
 	public Map<String, List<Integer>> nestedMapField = new HashMap<String, List<Integer>>();
+
 
 	@Test
 	public void parameterPrimitive() throws Exception {
@@ -367,22 +371,60 @@ public class TypeDescriptorTests {
 	@MethodAnnotation3
 	private Map<List<Integer>, List<Long>> property;
 
-	@Target({ElementType.METHOD})
+
+	@Target({ ElementType.METHOD, ElementType.ANNOTATION_TYPE })
 	@Retention(RetentionPolicy.RUNTIME)
 	public @interface MethodAnnotation1 {
-
 	}
 
 	@Target({ElementType.METHOD})
 	@Retention(RetentionPolicy.RUNTIME)
 	public @interface MethodAnnotation2 {
-
 	}
 
 	@Target({ElementType.FIELD})
 	@Retention(RetentionPolicy.RUNTIME)
 	public @interface MethodAnnotation3 {
+	}
 
+	@MethodAnnotation1
+	@Target({ ElementType.METHOD, ElementType.ANNOTATION_TYPE })
+	@Retention(RetentionPolicy.RUNTIME)
+	public @interface ComposedMethodAnnotation1 {}
+
+	@ComposedMethodAnnotation1
+	@Target(ElementType.METHOD)
+	@Retention(RetentionPolicy.RUNTIME)
+	public @interface ComposedComposedMethodAnnotation1 {}
+
+	@MethodAnnotation1
+	public void methodWithLocalAnnotation() {}
+
+	@ComposedMethodAnnotation1
+	public void methodWithComposedAnnotation() {}
+
+	@ComposedComposedMethodAnnotation1
+	public void methodWithComposedComposedAnnotation() {}
+
+	private void assertAnnotationFoundOnMethod(Class<? extends Annotation> annotationType, String methodName) throws Exception {
+		TypeDescriptor typeDescriptor = new TypeDescriptor(new MethodParameter(getClass().getMethod(methodName), -1));
+		assertNotNull("Should have found @" + annotationType.getSimpleName() + " on " + methodName + ".",
+			typeDescriptor.getAnnotation(annotationType));
+	}
+
+	@Test
+	public void getAnnotationOnMethodThatIsLocallyAnnotated() throws Exception {
+		assertAnnotationFoundOnMethod(MethodAnnotation1.class, "methodWithLocalAnnotation");
+	}
+
+	@Test
+	public void getAnnotationOnMethodThatIsMetaAnnotated() throws Exception {
+		assertAnnotationFoundOnMethod(MethodAnnotation1.class, "methodWithComposedAnnotation");
+	}
+
+	@Test
+	public void getAnnotationOnMethodThatIsMetaMetaAnnotated() throws Exception {
+		assertAnnotationFoundOnMethod(MethodAnnotation1.class, "methodWithComposedComposedAnnotation");
 	}
 
 	@Test
@@ -555,15 +597,16 @@ public class TypeDescriptorTests {
 		TypeDescriptor.nested(new MethodParameter(getClass().getMethod("test4", List.class), 0, 2), 2);
 	}
 
-	@Test(expected=IllegalStateException.class)
+	@Test
 	public void nestedTooManyLevels() throws Exception {
 		TypeDescriptor t1 = TypeDescriptor.nested(new MethodParameter(getClass().getMethod("test4", List.class), 0), 3);
-		assertEquals(String.class, t1.getType());
+		assertNull(t1);
 	}
 
-	@Test(expected=IllegalStateException.class)
+	@Test
 	public void nestedMethodParameterTypeNotNestable() throws Exception {
-		TypeDescriptor.nested(new MethodParameter(getClass().getMethod("test5", String.class), 0), 2);
+		TypeDescriptor t1 = TypeDescriptor.nested(new MethodParameter(getClass().getMethod("test5", String.class), 0), 2);
+		assertNull(t1);
 	}
 
 	@Test(expected=IllegalArgumentException.class)
@@ -840,6 +883,7 @@ public class TypeDescriptorTests {
 
 	public PassDownGeneric<Integer> passDownGeneric = new PassDownGeneric<Integer>();
 
+	@SuppressWarnings("serial")
 	public static class PassDownGeneric<T> extends ArrayList<List<Set<T>>> {
 	}
 
@@ -940,4 +984,5 @@ public class TypeDescriptorTests {
 		assertThat(new TypeDescriptor(methodParameter).getSource(), equalTo((Object) methodParameter));
 		assertThat(TypeDescriptor.valueOf(Integer.class).getSource(), equalTo((Object) Integer.class));
 	}
+
 }

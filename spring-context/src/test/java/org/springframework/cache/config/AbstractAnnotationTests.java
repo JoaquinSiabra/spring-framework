@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,19 +16,21 @@
 
 package org.springframework.cache.config;
 
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.nullValue;
-import static org.junit.Assert.*;
-
 import java.util.Collection;
 import java.util.UUID;
 
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+
 import org.springframework.aop.framework.AopProxyUtils;
+import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
-import org.springframework.context.ApplicationContext;
+import org.springframework.context.ConfigurableApplicationContext;
+
+import static org.hamcrest.Matchers.*;
+import static org.junit.Assert.*;
 
 /**
  * Abstract annotation test (containing several reusable methods).
@@ -36,10 +38,11 @@ import org.springframework.context.ApplicationContext;
  * @author Costin Leau
  * @author Chris Beams
  * @author Phillip Webb
+ * @author Stephane Nicoll
  */
 public abstract class AbstractAnnotationTests {
 
-	protected ApplicationContext ctx;
+	protected ConfigurableApplicationContext ctx;
 
 	protected CacheableService<?> cs;
 
@@ -47,20 +50,33 @@ public abstract class AbstractAnnotationTests {
 
 	protected CacheManager cm;
 
-	/** @return a refreshed application context */
-	protected abstract ApplicationContext getApplicationContext();
+
+	/**
+	 * @return a refreshed application context
+	 */
+	protected abstract ConfigurableApplicationContext getApplicationContext();
+
 
 	@Before
 	public void setup() {
 		ctx = getApplicationContext();
 		cs = ctx.getBean("service", CacheableService.class);
 		ccs = ctx.getBean("classService", CacheableService.class);
-		cm = ctx.getBean(CacheManager.class);
+		cm = ctx.getBean("cacheManager", CacheManager.class);
+
 		Collection<String> cn = cm.getCacheNames();
-		assertTrue(cn.contains("default"));
+		assertTrue(cn.contains("testCache"));
 		assertTrue(cn.contains("secondary"));
 		assertTrue(cn.contains("primary"));
 	}
+
+	@After
+	public void tearDown() {
+		if (ctx != null) {
+			ctx.close();
+		}
+	}
+
 
 	public void testCacheable(CacheableService<?> service) throws Exception {
 		Object o1 = new Object();
@@ -168,7 +184,7 @@ public abstract class AbstractAnnotationTests {
 		assertSame(r1, r2);
 		assertNotSame(r1, r10);
 		service.evictAll(new Object());
-		Cache cache = cm.getCache("default");
+		Cache cache = cm.getCache("testCache");
 		assertNull(cache.get(o1));
 		assertNull(cache.get(o2));
 
@@ -191,7 +207,7 @@ public abstract class AbstractAnnotationTests {
 	}
 
 	public void testUnlessExpression(CacheableService<?> service) throws Exception {
-		Cache cache = cm.getCache("default");
+		Cache cache = cm.getCache("testCache");
 		cache.clear();
 		service.unless(10);
 		service.unless(11);
@@ -238,7 +254,7 @@ public abstract class AbstractAnnotationTests {
 		Object key = new Object();
 		Object r1 = service.name(key);
 		assertSame(r1, service.name(key));
-		Cache cache = cm.getCache("default");
+		Cache cache = cm.getCache("testCache");
 		// assert the method name is used
 		assertNotNull(cache.get(keyName));
 	}
@@ -247,7 +263,7 @@ public abstract class AbstractAnnotationTests {
 		Object key = new Object();
 		Object r1 = service.rootVars(key);
 		assertSame(r1, service.rootVars(key));
-		Cache cache = cm.getCache("default");
+		Cache cache = cm.getCache("testCache");
 		// assert the method name is used
 		String expectedKey = "rootVarsrootVars" + AopProxyUtils.ultimateTargetClass(service) + service;
 		assertNotNull(cache.get(expectedKey));
@@ -281,7 +297,7 @@ public abstract class AbstractAnnotationTests {
 
 	public void testCacheUpdate(CacheableService<?> service) {
 		Object o = new Object();
-		Cache cache = cm.getCache("default");
+		Cache cache = cm.getCache("testCache");
 		assertNull(cache.get(o));
 		Object r1 = service.update(o);
 		assertSame(r1, cache.get(o).get());
@@ -296,7 +312,7 @@ public abstract class AbstractAnnotationTests {
 		Integer one = Integer.valueOf(1);
 		Integer three = Integer.valueOf(3);
 
-		Cache cache = cm.getCache("default");
+		Cache cache = cm.getCache("testCache");
 		assertEquals(one, Integer.valueOf(service.conditionalUpdate(one).toString()));
 		assertNull(cache.get(one));
 
@@ -556,7 +572,7 @@ public abstract class AbstractAnnotationTests {
 
 	@Test
 	public void testClassMethodName() throws Exception {
-		testMethodName(ccs, "namedefault");
+		testMethodName(ccs, "nametestCache");
 	}
 
 	@Test
@@ -567,6 +583,50 @@ public abstract class AbstractAnnotationTests {
 	@Test
 	public void testClassRootVars() throws Exception {
 		testRootVars(ccs);
+	}
+
+	@Test
+	public void testCustomKeyGenerator() {
+		Object param = new Object();
+		Object r1 = cs.customKeyGenerator(param);
+		assertSame(r1, cs.customKeyGenerator(param));
+		Cache cache = cm.getCache("testCache");
+		// Checks that the custom keyGenerator was used
+		Object expectedKey = SomeCustomKeyGenerator.generateKey("customKeyGenerator", param);
+		assertNotNull(cache.get(expectedKey));
+	}
+
+	@Test
+	public void testUnknownCustomKeyGenerator() {
+		try {
+			Object param = new Object();
+			cs.unknownCustomKeyGenerator(param);
+			fail("should have failed with NoSuchBeanDefinitionException");
+		} catch (NoSuchBeanDefinitionException e) {
+			// expected
+		}
+	}
+
+	@Test
+	public void testCustomCacheManager() {
+		CacheManager customCm = ctx.getBean("customCacheManager", CacheManager.class);
+		Object key = new Object();
+		Object r1 = cs.customCacheManager(key);
+		assertSame(r1, cs.customCacheManager(key));
+
+		Cache cache = customCm.getCache("testCache");
+		assertNotNull(cache.get(key));
+	}
+
+	@Test
+	public void testUnknownCustomCacheManager() {
+		try {
+			Object param = new Object();
+			cs.unknownCustomCacheManager(param);
+			fail("should have failed with NoSuchBeanDefinitionException");
+		} catch (NoSuchBeanDefinitionException e) {
+			// expected
+		}
 	}
 
 	@Test
@@ -678,4 +738,5 @@ public abstract class AbstractAnnotationTests {
 	public void testClassMultiConditionalCacheAndEvict() {
 		testMultiConditionalCacheAndEvict(ccs);
 	}
+
 }

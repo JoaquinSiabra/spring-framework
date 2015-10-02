@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,11 +23,16 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
+import org.springframework.core.annotation.AliasFor;
+
 /**
  * {@code ActiveProfiles} is a class-level annotation that is used to declare
  * which <em>active bean definition profiles</em> should be used when loading
  * an {@link org.springframework.context.ApplicationContext ApplicationContext}
  * for test classes.
+ *
+ * <p>As of Spring Framework 4.0, this annotation may be used as a
+ * <em>meta-annotation</em> to create custom <em>composed annotations</em>.
  *
  * @author Sam Brannen
  * @since 3.1
@@ -47,28 +52,24 @@ public @interface ActiveProfiles {
 	/**
 	 * Alias for {@link #profiles}.
 	 *
-	 * <p>This attribute may <strong>not</strong> be used in conjunction
-	 * with {@link #profiles} or {@link #resolver}, but it may be used
-	 * <em>instead</em> of them.
+	 * <p>This attribute may <strong>not</strong> be used in conjunction with
+	 * {@link #profiles}, but it may be used <em>instead</em> of {@link #profiles}.
 	 */
+	@AliasFor("profiles")
 	String[] value() default {};
 
 	/**
 	 * The bean definition profiles to activate.
 	 *
-	 * <p>This attribute may <strong>not</strong> be used in conjunction
-	 * with {@link #value} or {@link #resolver}, but it may be used
-	 * <em>instead</em> of them.
+	 * <p>This attribute may <strong>not</strong> be used in conjunction with
+	 * {@link #value}, but it may be used <em>instead</em> of {@link #value}.
 	 */
+	@AliasFor("value")
 	String[] profiles() default {};
 
 	/**
 	 * The type of {@link ActiveProfilesResolver} to use for resolving the active
 	 * bean definition profiles programmatically.
-	 *
-	 * <p>This attribute may <strong>not</strong> be used in conjunction
-	 * with {@link #profiles} or {@link #value}, but it may be used <em>instead</em>
-	 * of them in order to resolve the active profiles programmatically.
 	 *
 	 * @since 4.0
 	 * @see ActiveProfilesResolver

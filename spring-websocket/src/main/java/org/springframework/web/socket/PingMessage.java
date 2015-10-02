@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,6 @@ import java.nio.ByteBuffer;
  */
 public final class PingMessage extends AbstractWebSocketMessage<ByteBuffer> {
 
-
 	/**
 	 * Create a new ping message with an empty payload.
 	 */
@@ -36,7 +35,6 @@ public final class PingMessage extends AbstractWebSocketMessage<ByteBuffer> {
 
 	/**
 	 * Create a new ping message with the given ByteBuffer payload.
-	 *
 	 * @param payload the non-null payload
 	 */
 	public PingMessage(ByteBuffer payload) {
@@ -45,13 +43,13 @@ public final class PingMessage extends AbstractWebSocketMessage<ByteBuffer> {
 
 
 	@Override
-	protected int getPayloadSize() {
-		return getPayload().remaining();
+	public int getPayloadLength() {
+		return (getPayload() != null ? getPayload().remaining() : 0);
 	}
 
 	@Override
 	protected String toStringPayload() {
-		return getPayload().toString();
+		return (getPayload() != null ? getPayload().toString() : null);
 	}
 
 }

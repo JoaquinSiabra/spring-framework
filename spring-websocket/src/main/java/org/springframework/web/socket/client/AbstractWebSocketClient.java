@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -25,15 +25,15 @@ import java.util.Set;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+
 import org.springframework.http.HttpHeaders;
 import org.springframework.util.Assert;
 import org.springframework.util.concurrent.ListenableFuture;
+import org.springframework.web.socket.WebSocketExtension;
 import org.springframework.web.socket.WebSocketHandler;
+import org.springframework.web.socket.WebSocketHttpHeaders;
 import org.springframework.web.socket.WebSocketSession;
-import org.springframework.web.socket.support.WebSocketExtension;
-import org.springframework.web.socket.support.WebSocketHttpHeaders;
 import org.springframework.web.util.UriComponentsBuilder;
-
 
 /**
  * Abstract base class for {@link WebSocketClient} implementations.
@@ -49,7 +49,6 @@ public abstract class AbstractWebSocketClient implements WebSocketClient {
 
 	static {
 		specialHeaders.add("cache-control");
-		specialHeaders.add("cookie");
 		specialHeaders.add("connection");
 		specialHeaders.add("host");
 		specialHeaders.add("sec-websocket-extensions");
@@ -75,10 +74,7 @@ public abstract class AbstractWebSocketClient implements WebSocketClient {
 			WebSocketHttpHeaders headers, URI uri) {
 
 		Assert.notNull(webSocketHandler, "webSocketHandler must not be null");
-		Assert.notNull(uri, "uri must not be null");
-
-		String scheme = uri.getScheme();
-		Assert.isTrue(((scheme != null) && ("ws".equals(scheme) || "wss".equals(scheme))), "Invalid scheme: " + scheme);
+		assertUri(uri);
 
 		if (logger.isDebugEnabled()) {
 			logger.debug("Connecting to " + uri);
@@ -103,22 +99,28 @@ public abstract class AbstractWebSocketClient implements WebSocketClient {
 				Collections.<String, Object>emptyMap());
 	}
 
+	protected void assertUri(URI uri) {
+		Assert.notNull(uri, "uri must not be null");
+		String scheme = uri.getScheme();
+		Assert.isTrue(scheme != null && ("ws".equals(scheme) || "wss".equals(scheme)), "Invalid scheme: " + scheme);
+	}
+
 	/**
 	 * Perform the actual handshake to establish a connection to the server.
 	 *
 	 * @param webSocketHandler the client-side handler for WebSocket messages
 	 * @param headers HTTP headers to use for the handshake, with unwanted (forbidden)
-	 *        headers filtered out, never {@code null}
+	 * headers filtered out, never {@code null}
 	 * @param uri the target URI for the handshake, never {@code null}
 	 * @param subProtocols requested sub-protocols, or an empty list
 	 * @param extensions requested WebSocket extensions, or an empty list
-	 * @param handshakeAttributes attributes to make available via
-	 *        {@link WebSocketSession#getHandshakeAttributes()}; currently always an empty map.
+	 * @param attributes attributes to associate with the WebSocketSession, i.e. via
+	 * {@link WebSocketSession#getAttributes()}; currently always an empty map.
 	 *
 	 * @return the established WebSocket session wrapped in a ListenableFuture.
 	 */
 	protected abstract ListenableFuture<WebSocketSession> doHandshakeInternal(WebSocketHandler webSocketHandler,
 			HttpHeaders headers, URI uri, List<String> subProtocols, List<WebSocketExtension> extensions,
-			Map<String, Object> handshakeAttributes);
+			Map<String, Object> attributes);
 
 }

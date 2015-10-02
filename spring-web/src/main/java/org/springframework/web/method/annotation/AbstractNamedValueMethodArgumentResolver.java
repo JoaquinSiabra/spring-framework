@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,14 +18,14 @@ package org.springframework.web.method.annotation;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-
 import javax.servlet.ServletException;
 
+import org.springframework.beans.ConversionNotSupportedException;
+import org.springframework.beans.TypeMismatchException;
 import org.springframework.beans.factory.config.BeanExpressionContext;
 import org.springframework.beans.factory.config.BeanExpressionResolver;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.core.MethodParameter;
-import org.springframework.util.Assert;
 import org.springframework.web.bind.WebDataBinder;
 import org.springframework.web.bind.annotation.ValueConstants;
 import org.springframework.web.bind.support.WebDataBinderFactory;
@@ -61,8 +61,13 @@ public abstract class AbstractNamedValueMethodArgumentResolver implements Handle
 
 	private final BeanExpressionContext expressionContext;
 
-	private Map<MethodParameter, NamedValueInfo> namedValueInfoCache =
-			new ConcurrentHashMap<MethodParameter, NamedValueInfo>(256);
+	private Map<MethodParameter, NamedValueInfo> namedValueInfoCache = new ConcurrentHashMap<MethodParameter, NamedValueInfo>(256);
+
+
+	public AbstractNamedValueMethodArgumentResolver() {
+		this.configurableBeanFactory = null;
+		this.expressionContext = null;
+	}
 
 	/**
 	 * @param beanFactory a bean factory to use for resolving ${...} placeholder
@@ -71,14 +76,13 @@ public abstract class AbstractNamedValueMethodArgumentResolver implements Handle
 	 */
 	public AbstractNamedValueMethodArgumentResolver(ConfigurableBeanFactory beanFactory) {
 		this.configurableBeanFactory = beanFactory;
-		this.expressionContext = (beanFactory != null) ? new BeanExpressionContext(beanFactory, new RequestScope()) : null;
+		this.expressionContext = (beanFactory != null ? new BeanExpressionContext(beanFactory, new RequestScope()) : null);
 	}
 
+
 	@Override
-	public final Object resolveArgument(
-			MethodParameter parameter, ModelAndViewContainer mavContainer,
-			NativeWebRequest webRequest, WebDataBinderFactory binderFactory)
-			throws Exception {
+	public final Object resolveArgument(MethodParameter parameter, ModelAndViewContainer mavContainer,
+			NativeWebRequest webRequest, WebDataBinderFactory binderFactory) throws Exception {
 
 		Class<?> paramType = parameter.getParameterType();
 		NamedValueInfo namedValueInfo = getNamedValueInfo(parameter);
@@ -88,18 +92,29 @@ public abstract class AbstractNamedValueMethodArgumentResolver implements Handle
 			if (namedValueInfo.defaultValue != null) {
 				arg = resolveDefaultValue(namedValueInfo.defaultValue);
 			}
-			else if (namedValueInfo.required) {
+			else if (namedValueInfo.required && !parameter.getParameterType().getName().equals("java.util.Optional")) {
 				handleMissingValue(namedValueInfo.name, parameter);
 			}
 			arg = handleNullValue(namedValueInfo.name, arg, paramType);
 		}
-		else if ("".equals(arg) && (namedValueInfo.defaultValue != null)) {
+		else if ("".equals(arg) && namedValueInfo.defaultValue != null) {
 			arg = resolveDefaultValue(namedValueInfo.defaultValue);
 		}
 
 		if (binderFactory != null) {
 			WebDataBinder binder = binderFactory.createBinder(webRequest, null, namedValueInfo.name);
-			arg = binder.convertIfNecessary(arg, paramType, parameter);
+			try {
+				arg = binder.convertIfNecessary(arg, paramType, parameter);
+			}
+			catch (ConversionNotSupportedException ex) {
+				throw new MethodArgumentConversionNotSupportedException(arg, ex.getRequiredType(),
+						namedValueInfo.name, parameter, ex.getCause());
+			}
+			catch (TypeMismatchException ex) {
+				throw new MethodArgumentTypeMismatchException(arg, ex.getRequiredType(),
+						namedValueInfo.name, parameter, ex.getCause());
+
+			}
 		}
 
 		handleResolvedValue(arg, namedValueInfo.name, parameter, mavContainer, webRequest);
@@ -135,8 +150,10 @@ public abstract class AbstractNamedValueMethodArgumentResolver implements Handle
 		String name = info.name;
 		if (info.name.length() == 0) {
 			name = parameter.getParameterName();
-			Assert.notNull(name, "Name for argument type [" + parameter.getParameterType().getName()
-						+ "] not available, and parameter name information not found in class file either.");
+			if (name == null) {
+				throw new IllegalArgumentException("Name for argument type [" + parameter.getParameterType().getName() +
+						"] not available, and parameter name information not found in class file either.");
+			}
 		}
 		String defaultValue = (ValueConstants.DEFAULT_NONE.equals(info.defaultValue) ? null : info.defaultValue);
 		return new NamedValueInfo(name, info.required, defaultValue);
@@ -217,7 +234,7 @@ public abstract class AbstractNamedValueMethodArgumentResolver implements Handle
 
 		private final String defaultValue;
 
-		protected NamedValueInfo(String name, boolean required, String defaultValue) {
+		public NamedValueInfo(String name, boolean required, String defaultValue) {
 			this.name = name;
 			this.required = required;
 			this.defaultValue = defaultValue;

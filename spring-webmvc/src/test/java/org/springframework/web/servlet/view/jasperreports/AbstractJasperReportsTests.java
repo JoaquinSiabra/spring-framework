@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,12 +24,11 @@ import java.util.Map;
 
 import net.sf.jasperreports.engine.data.JRBeanCollectionDataSource;
 
-import org.junit.Before;
 import org.junit.BeforeClass;
+
 import org.springframework.mock.web.test.MockHttpServletRequest;
 import org.springframework.mock.web.test.MockHttpServletResponse;
 import org.springframework.tests.Assume;
-import org.springframework.tests.TestGroup;
 import org.springframework.ui.jasperreports.PersonBean;
 import org.springframework.ui.jasperreports.ProductBean;
 import org.springframework.util.ClassUtils;
@@ -39,6 +38,7 @@ import org.springframework.web.servlet.i18n.AcceptHeaderLocaleResolver;
 /**
  * @author Rob Harrop
  * @author Juergen Hoeller
+ * @author Sam Brannen
  */
 public abstract class AbstractJasperReportsTests {
 
@@ -52,29 +52,23 @@ public abstract class AbstractJasperReportsTests {
 			"org.eclipse.jdt.internal.compiler.Compiler", AbstractJasperReportsTests.class.getClassLoader());
 
 
-	protected MockHttpServletRequest request;
+	protected final MockHttpServletResponse response = new MockHttpServletResponse();
 
-	protected MockHttpServletResponse response;
-
-
-	@BeforeClass
-	public static void assumptions() {
-		Assume.canLoadNativeDirFonts();
-		Assume.group(TestGroup.CUSTOM_COMPILATION);
-	}
-
-	@Before
-	public void setUp() {
-		request = new MockHttpServletRequest();
-		response = new MockHttpServletResponse();
-
+	protected final MockHttpServletRequest request = new MockHttpServletRequest();
+	{
 		request.setAttribute(DispatcherServlet.LOCALE_RESOLVER_ATTRIBUTE, new AcceptHeaderLocaleResolver());
 		request.addPreferredLocale(Locale.GERMAN);
 	}
 
 
+	@BeforeClass
+	public static void assumptions() {
+		Assume.canLoadNativeDirFonts();
+	}
+
+
 	protected Map<String, Object> getModel() {
-		Map model = new HashMap();
+		Map<String, Object> model = new HashMap<String, Object>();
 		model.put("ReportTitle", "Dear Lord!");
 		model.put("dataSource", new JRBeanCollectionDataSource(getData()));
 		extendModel(model);
@@ -87,8 +81,8 @@ public abstract class AbstractJasperReportsTests {
 	protected void extendModel(Map<String, Object> model) {
 	}
 
-	protected List getData() {
-		List list = new ArrayList();
+	protected List<Object> getData() {
+		List<Object> list = new ArrayList<Object>();
 		for (int x = 0; x < 10; x++) {
 			PersonBean bean = new PersonBean();
 			bean.setId(x);
@@ -99,15 +93,14 @@ public abstract class AbstractJasperReportsTests {
 		return list;
 	}
 
-	protected List getProductData() {
-		List list = new ArrayList();
+	protected List<Object> getProductData() {
+		List<Object> list = new ArrayList<Object>();
 		for (int x = 0; x < 10; x++) {
 			ProductBean bean = new ProductBean();
 			bean.setId(x);
 			bean.setName("Foo Bar");
 			bean.setPrice(1.9f);
 			bean.setQuantity(1.0f);
-
 			list.add(bean);
 		}
 		return list;

@@ -29,9 +29,10 @@ import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.util.Assert;
 
 /**
- * Complete implementation of the {@link org.springframework.beans.factory.support.AutowireCandidateResolver}
- * strategy interface, providing support for qualifier annotations as well as for lazy resolution driven
- * by the {@link Lazy} annotation in the {@code context.annotation} package.
+ * Complete implementation of the
+ * {@link org.springframework.beans.factory.support.AutowireCandidateResolver} strategy
+ * interface, providing support for qualifier annotations as well as for lazy resolution
+ * driven by the {@link Lazy} annotation in the {@code context.annotation} package.
  *
  * @author Juergen Hoeller
  * @since 4.0
@@ -53,7 +54,7 @@ public class ContextAnnotationAutowireCandidateResolver extends QualifierAnnotat
 		MethodParameter methodParam = descriptor.getMethodParameter();
 		if (methodParam != null) {
 			Method method = methodParam.getMethod();
-			if (method == null || void.class.equals(method.getReturnType())) {
+			if (method == null || void.class == method.getReturnType()) {
 				Lazy lazy = AnnotationUtils.getAnnotation(methodParam.getAnnotatedElement(), Lazy.class);
 				if (lazy != null && lazy.value()) {
 					return true;

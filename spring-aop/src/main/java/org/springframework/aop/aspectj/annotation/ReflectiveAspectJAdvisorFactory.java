@@ -157,7 +157,7 @@ public class ReflectiveAspectJAdvisorFactory extends AbstractAspectJAdvisorFacto
 			return null;
 		}
 
-		if (DeclareParents.class.equals(declareParents.defaultImpl())) {
+		if (DeclareParents.class == declareParents.defaultImpl()) {
 			// This is what comes back if it wasn't set. This seems bizarre...
 			// TODO this restriction possibly should be relaxed
 			throw new IllegalStateException("defaultImpl must be set on DeclareParents");
@@ -190,7 +190,7 @@ public class ReflectiveAspectJAdvisorFactory extends AbstractAspectJAdvisorFacto
 			return null;
 		}
 		AspectJExpressionPointcut ajexp =
-				new AspectJExpressionPointcut(candidateAspectClass, new String[0], new Class[0]);
+				new AspectJExpressionPointcut(candidateAspectClass, new String[0], new Class<?>[0]);
 		ajexp.setExpression(aspectJAnnotation.getPointcutExpression());
 		return ajexp;
 	}

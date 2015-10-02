@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,11 +26,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
 import org.springframework.beans.BeansException;
+import org.springframework.beans.CachedIntrospectionResults;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
@@ -52,6 +54,7 @@ import org.springframework.context.MessageSource;
 import org.springframework.context.MessageSourceAware;
 import org.springframework.context.MessageSourceResolvable;
 import org.springframework.context.NoSuchMessageException;
+import org.springframework.context.PayloadApplicationEvent;
 import org.springframework.context.ResourceLoaderAware;
 import org.springframework.context.event.ApplicationEventMulticaster;
 import org.springframework.context.event.ContextClosedEvent;
@@ -62,6 +65,7 @@ import org.springframework.context.event.SimpleApplicationEventMulticaster;
 import org.springframework.context.expression.StandardBeanExpressionResolver;
 import org.springframework.context.weaving.LoadTimeWeaverAware;
 import org.springframework.context.weaving.LoadTimeWeaverAwareProcessor;
+import org.springframework.core.ResolvableType;
 import org.springframework.core.convert.ConversionService;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.Environment;
@@ -106,6 +110,7 @@ import org.springframework.util.ObjectUtils;
  * @author Rod Johnson
  * @author Juergen Hoeller
  * @author Mark Fisher
+ * @author Stephane Nicoll
  * @since January 21, 2001
  * @see #refreshBeanFactory
  * @see #getBeanFactory
@@ -161,6 +166,9 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	/** Parent context */
 	private ApplicationContext parent;
 
+	/** Environment used by this context */
+	private ConfigurableEnvironment environment;
+
 	/** BeanFactoryPostProcessors to apply on refresh */
 	private final List<BeanFactoryPostProcessor> beanFactoryPostProcessors =
 			new ArrayList<BeanFactoryPostProcessor>();
@@ -169,13 +177,10 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	private long startupDate;
 
 	/** Flag that indicates whether this context is currently active */
-	private boolean active = false;
+	private final AtomicBoolean active = new AtomicBoolean();
 
 	/** Flag that indicates whether this context has been closed already */
-	private boolean closed = false;
-
-	/** Synchronization monitor for the "active" flag */
-	private final Object activeMonitor = new Object();
+	private final AtomicBoolean closed = new AtomicBoolean();
 
 	/** Synchronization monitor for the "refresh" and "destroy" */
 	private final Object startupShutdownMonitor = new Object();
@@ -196,17 +201,17 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	private ApplicationEventMulticaster applicationEventMulticaster;
 
 	/** Statically specified listeners */
-	private Set<ApplicationListener<?>> applicationListeners = new LinkedHashSet<ApplicationListener<?>>();
+	private final Set<ApplicationListener<?>> applicationListeners = new LinkedHashSet<ApplicationListener<?>>();
 
-	/** Environment used by this context; initialized by {@link #createEnvironment()} */
-	private ConfigurableEnvironment environment;
+	/** ApplicationEvents published early */
+	private Set<ApplicationEvent> earlyApplicationEvents;
 
 
 	/**
 	 * Create a new AbstractApplicationContext with no parent.
 	 */
 	public AbstractApplicationContext() {
-		this(null);
+		this.resourcePatternResolver = getResourcePatternResolver();
 	}
 
 	/**
@@ -214,8 +219,8 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	 * @param parent the parent context
 	 */
 	public AbstractApplicationContext(ApplicationContext parent) {
-		this.parent = parent;
-		this.resourcePatternResolver = getResourcePatternResolver();
+		this();
+		setParent(parent);
 	}
 
 
@@ -326,13 +331,63 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	 */
 	@Override
 	public void publishEvent(ApplicationEvent event) {
+		publishEvent(event, null);
+	}
+
+	/**
+	 * Publish the given event to all listeners.
+	 * <p>Note: Listeners get initialized after the MessageSource, to be able
+	 * to access it within listener implementations. Thus, MessageSource
+	 * implementations cannot publish events.
+	 * @param event the event to publish (may be an {@link ApplicationEvent}
+	 * or a payload object to be turned into a {@link PayloadApplicationEvent})
+	 */
+	@Override
+	public void publishEvent(Object event) {
+		publishEvent(event, null);
+	}
+
+	/**
+	 * Publish the given event to all listeners.
+	 * @param event the event to publish (may be an {@link ApplicationEvent}
+	 * or a payload object to be turned into a {@link PayloadApplicationEvent})
+	 * @param eventType the resolved event type, if known
+	 * @since 4.2
+	 */
+	protected void publishEvent(Object event, ResolvableType eventType) {
 		Assert.notNull(event, "Event must not be null");
 		if (logger.isTraceEnabled()) {
 			logger.trace("Publishing event in " + getDisplayName() + ": " + event);
 		}
-		getApplicationEventMulticaster().multicastEvent(event);
+
+		// Decorate event as an ApplicationEvent if necessary
+		ApplicationEvent applicationEvent;
+		if (event instanceof ApplicationEvent) {
+			applicationEvent = (ApplicationEvent) event;
+		}
+		else {
+			applicationEvent = new PayloadApplicationEvent<Object>(this, event);
+			if (eventType == null) {
+				eventType = ResolvableType.forClassWithGenerics(PayloadApplicationEvent.class, event.getClass());
+			}
+		}
+
+		// Multicast right now if possible - or lazily once the multicaster is initialized
+		if (this.earlyApplicationEvents != null) {
+			this.earlyApplicationEvents.add(applicationEvent);
+		}
+		else {
+			getApplicationEventMulticaster().multicastEvent(applicationEvent, eventType);
+		}
+
+		// Publish event via parent context as well...
 		if (this.parent != null) {
-			this.parent.publishEvent(event);
+			if (this.parent instanceof AbstractApplicationContext) {
+				((AbstractApplicationContext) this.parent).publishEvent(event, eventType);
+			}
+			else {
+				this.parent.publishEvent(event);
+			}
 		}
 	}
 
@@ -354,7 +409,7 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	 * @return the internal LifecycleProcessor (never {@code null})
 	 * @throws IllegalStateException if the context has not been initialized yet
 	 */
-	LifecycleProcessor getLifecycleProcessor() {
+	LifecycleProcessor getLifecycleProcessor() throws IllegalStateException {
 		if (this.lifecycleProcessor == null) {
 			throw new IllegalStateException("LifecycleProcessor not initialized - " +
 					"call 'refresh' before invoking lifecycle methods via the context: " + this);
@@ -486,6 +541,8 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 			}
 
 			catch (BeansException ex) {
+				logger.warn("Exception encountered during context initialization - cancelling refresh attempt", ex);
+
 				// Destroy already created singletons to avoid dangling resources.
 				destroyBeans();
 
@@ -494,6 +551,12 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 
 				// Propagate exception to caller.
 				throw ex;
+			}
+
+			finally {
+				// Reset common introspection caches in Spring's core, since we
+				// might not ever need metadata for singleton beans anymore...
+				resetCommonCaches();
 			}
 		}
 	}
@@ -504,10 +567,8 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	 */
 	protected void prepareRefresh() {
 		this.startupDate = System.currentTimeMillis();
-
-		synchronized (this.activeMonitor) {
-			this.active = true;
-		}
+		this.closed.set(false);
+		this.active.set(true);
 
 		if (logger.isInfoEnabled()) {
 			logger.info("Refreshing " + this);
@@ -519,6 +580,10 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 		// Validate that all properties marked as required are resolvable
 		// see ConfigurablePropertyResolver#setRequiredProperties
 		getEnvironment().validateRequiredProperties();
+
+		// Allow for the collection of early ApplicationEvents,
+		// to be published once the multicaster is available...
+		this.earlyApplicationEvents = new LinkedHashSet<ApplicationEvent>();
 	}
 
 	/**
@@ -553,7 +618,7 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	protected void prepareBeanFactory(ConfigurableListableBeanFactory beanFactory) {
 		// Tell the internal bean factory to use the context's class loader etc.
 		beanFactory.setBeanClassLoader(getClassLoader());
-		beanFactory.setBeanExpressionResolver(new StandardBeanExpressionResolver());
+		beanFactory.setBeanExpressionResolver(new StandardBeanExpressionResolver(beanFactory.getBeanClassLoader()));
 		beanFactory.addPropertyEditorRegistrar(new ResourceEditorRegistrar(this, getEnvironment()));
 
 		// Configure the bean factory with context callbacks.
@@ -724,11 +789,21 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 		for (ApplicationListener<?> listener : getApplicationListeners()) {
 			getApplicationEventMulticaster().addApplicationListener(listener);
 		}
+
 		// Do not initialize FactoryBeans here: We need to leave all regular beans
 		// uninitialized to let post-processors apply to them!
 		String[] listenerBeanNames = getBeanNamesForType(ApplicationListener.class, true, false);
-		for (String lisName : listenerBeanNames) {
-			getApplicationEventMulticaster().addApplicationListenerBean(lisName);
+		for (String listenerBeanName : listenerBeanNames) {
+			getApplicationEventMulticaster().addApplicationListenerBean(listenerBeanName);
+		}
+
+		// Publish early application events now that we finally have a multicaster...
+		Set<ApplicationEvent> earlyEventsToProcess = this.earlyApplicationEvents;
+		this.earlyApplicationEvents = null;
+		if (earlyEventsToProcess != null) {
+			for (ApplicationEvent earlyEvent : earlyEventsToProcess) {
+				getApplicationEventMulticaster().multicastEvent(earlyEvent);
+			}
 		}
 	}
 
@@ -785,9 +860,19 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	 * @param ex the exception that led to the cancellation
 	 */
 	protected void cancelRefresh(BeansException ex) {
-		synchronized (this.activeMonitor) {
-			this.active = false;
-		}
+		this.active.set(false);
+	}
+
+	/**
+	 * Reset Spring's common core caches, in particular the {@link ResolvableType}
+	 * and the {@link CachedIntrospectionResults} caches.
+	 * @since 4.2
+	 * @see ResolvableType#clearCache()
+	 * @see CachedIntrospectionResults#clearClassLoader(ClassLoader)
+	 */
+	protected void resetCommonCaches() {
+		ResolvableType.clearCache();
+		CachedIntrospectionResults.clearClassLoader(getClassLoader());
 	}
 
 
@@ -862,13 +947,7 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	 * @see #registerShutdownHook()
 	 */
 	protected void doClose() {
-		boolean actuallyClose;
-		synchronized (this.activeMonitor) {
-			actuallyClose = this.active && !this.closed;
-			this.closed = true;
-		}
-
-		if (actuallyClose) {
+		if (this.active.get() && this.closed.compareAndSet(false, true)) {
 			if (logger.isInfoEnabled()) {
 				logger.info("Closing " + this);
 			}
@@ -900,9 +979,7 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 			// Let subclasses do some final clean-up if they wish...
 			onClose();
 
-			synchronized (this.activeMonitor) {
-				this.active = false;
-			}
+			this.active.set(false);
 		}
 	}
 
@@ -935,9 +1012,7 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 
 	@Override
 	public boolean isActive() {
-		synchronized (this.activeMonitor) {
-			return this.active;
-		}
+		return this.active.get();
 	}
 
 	/**
@@ -950,14 +1025,12 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	 * no-op if {@link #getBeanFactory()} itself throws an exception in such a case.
 	 */
 	protected void assertBeanFactoryActive() {
-		synchronized (this.activeMonitor) {
-			if (!this.active) {
-				if (this.closed) {
-					throw new IllegalStateException(getDisplayName() + " has been closed already");
-				}
-				else {
-					throw new IllegalStateException(getDisplayName() + " has not been refreshed yet");
-				}
+		if (!this.active.get()) {
+			if (this.closed.get()) {
+				throw new IllegalStateException(getDisplayName() + " has been closed already");
+			}
+			else {
+				throw new IllegalStateException(getDisplayName() + " has not been refreshed yet");
 			}
 		}
 	}
@@ -992,6 +1065,12 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	}
 
 	@Override
+	public <T> T getBean(Class<T> requiredType, Object... args) throws BeansException {
+		assertBeanFactoryActive();
+		return getBeanFactory().getBean(requiredType, args);
+	}
+
+	@Override
 	public boolean containsBean(String name) {
 		return getBeanFactory().containsBean(name);
 	}
@@ -1009,9 +1088,15 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	}
 
 	@Override
-	public boolean isTypeMatch(String name, Class<?> targetType) throws NoSuchBeanDefinitionException {
+	public boolean isTypeMatch(String name, ResolvableType typeToMatch) throws NoSuchBeanDefinitionException {
 		assertBeanFactoryActive();
-		return getBeanFactory().isTypeMatch(name, targetType);
+		return getBeanFactory().isTypeMatch(name, typeToMatch);
+	}
+
+	@Override
+	public boolean isTypeMatch(String name, Class<?> typeToMatch) throws NoSuchBeanDefinitionException {
+		assertBeanFactoryActive();
+		return getBeanFactory().isTypeMatch(name, typeToMatch);
 	}
 
 	@Override
@@ -1046,6 +1131,12 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	}
 
 	@Override
+	public String[] getBeanNamesForType(ResolvableType type) {
+		assertBeanFactoryActive();
+		return getBeanFactory().getBeanNamesForType(type);
+	}
+
+	@Override
 	public String[] getBeanNamesForType(Class<?> type) {
 		assertBeanFactoryActive();
 		return getBeanFactory().getBeanNamesForType(type);
@@ -1072,6 +1163,12 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	}
 
 	@Override
+	public String[] getBeanNamesForAnnotation(Class<? extends Annotation> annotationType) {
+		assertBeanFactoryActive();
+		return getBeanFactory().getBeanNamesForAnnotation(annotationType);
+	}
+
+	@Override
 	public Map<String, Object> getBeansWithAnnotation(Class<? extends Annotation> annotationType)
 			throws BeansException {
 
@@ -1080,7 +1177,9 @@ public abstract class AbstractApplicationContext extends DefaultResourceLoader
 	}
 
 	@Override
-	public <A extends Annotation> A findAnnotationOnBean(String beanName, Class<A> annotationType) {
+	public <A extends Annotation> A findAnnotationOnBean(String beanName, Class<A> annotationType)
+			throws NoSuchBeanDefinitionException{
+
 		assertBeanFactoryActive();
 		return getBeanFactory().findAnnotationOnBean(beanName, annotationType);
 	}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import org.springframework.core.convert.ConversionService;
 import org.springframework.core.convert.TypeDescriptor;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.util.StringUtils;
+import org.springframework.web.bind.MissingPathVariableException;
 import org.springframework.web.bind.ServletRequestBindingException;
 import org.springframework.web.bind.WebDataBinder;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -56,8 +57,8 @@ import org.springframework.web.util.UriComponentsBuilder;
  * {@link RequestParamMapMethodArgumentResolver} is used instead to provide
  * access to all URI variables in a map.
  *
- * <p>A {@link WebDataBinder} is invoked to apply type conversion to resolved path variable values that
- * don't yet match the method parameter type.
+ * <p>A {@link WebDataBinder} is invoked to apply type conversion to resolved
+ * path variable values that don't yet match the method parameter type.
  *
  * @author Rossen Stoyanchev
  * @author Arjen Poutsma
@@ -70,8 +71,8 @@ public class PathVariableMethodArgumentResolver extends AbstractNamedValueMethod
 
 
 	public PathVariableMethodArgumentResolver() {
-		super(null);
 	}
+
 
 	@Override
 	public boolean supportsParameter(MethodParameter parameter) {
@@ -101,10 +102,10 @@ public class PathVariableMethodArgumentResolver extends AbstractNamedValueMethod
 	}
 
 	@Override
-	protected void handleMissingValue(String name, MethodParameter param) throws ServletRequestBindingException {
-		String paramType = param.getParameterType().getName();
-		throw new ServletRequestBindingException(
-				"Missing URI template variable '" + name + "' for method parameter type [" + paramType + "]");
+	protected void handleMissingValue(String name, MethodParameter parameter)
+			throws ServletRequestBindingException {
+
+		throw new MissingPathVariableException(name, parameter);
 	}
 
 	@Override
@@ -130,21 +131,33 @@ public class PathVariableMethodArgumentResolver extends AbstractNamedValueMethod
 			return;
 		}
 
-		PathVariable annot = parameter.getParameterAnnotation(PathVariable.class);
-		String name = StringUtils.isEmpty(annot.value()) ? parameter.getParameterName() : annot.value();
-
-		if (conversionService != null) {
-			value = conversionService.convert(value, new TypeDescriptor(parameter), STRING_TYPE_DESCRIPTOR);
-		}
-
+		PathVariable ann = parameter.getParameterAnnotation(PathVariable.class);
+		String name = (ann == null || StringUtils.isEmpty(ann.value()) ? parameter.getParameterName() : ann.value());
+		value = formatUriValue(conversionService, new TypeDescriptor(parameter), value);
 		uriVariables.put(name, value);
+	}
+
+	protected String formatUriValue(ConversionService cs, TypeDescriptor sourceType, Object value) {
+		if (value == null) {
+			return null;
+		}
+		else if (value instanceof String) {
+			return (String) value;
+		}
+		else if (cs != null) {
+			return (String) cs.convert(value, sourceType, STRING_TYPE_DESCRIPTOR);
+		}
+		else {
+			return value.toString();
+		}
 	}
 
 
 	private static class PathVariableNamedValueInfo extends NamedValueInfo {
 
-		private PathVariableNamedValueInfo(PathVariable annotation) {
+		public PathVariableNamedValueInfo(PathVariable annotation) {
 			super(annotation.value(), true, ValueConstants.DEFAULT_NONE);
 		}
 	}
+
 }

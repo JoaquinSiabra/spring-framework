@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -232,7 +232,7 @@ public class AnnotationMethodHandlerAdapter extends PortletContentGenerator
 	 * having a chance to resolve an argument value before the standard
 	 * argument handling kicks in.
 	 */
-	public void setCustomArgumentResolvers(WebArgumentResolver[] argumentResolvers) {
+	public void setCustomArgumentResolvers(WebArgumentResolver... argumentResolvers) {
 		this.customArgumentResolvers = argumentResolvers;
 	}
 
@@ -250,7 +250,7 @@ public class AnnotationMethodHandlerAdapter extends PortletContentGenerator
 	 * Any such custom ModelAndViewResolver will kick in first, having a chance to
 	 * resolve an return value before the standard ModelAndView handling kicks in.
 	 */
-	public void setCustomModelAndViewResolvers(ModelAndViewResolver[] customModelAndViewResolvers) {
+	public void setCustomModelAndViewResolvers(ModelAndViewResolver... customModelAndViewResolvers) {
 		this.customModelAndViewResolvers = customModelAndViewResolvers;
 	}
 
@@ -381,7 +381,8 @@ public class AnnotationMethodHandlerAdapter extends PortletContentGenerator
 				if (response instanceof EventResponse) {
 					// Update the existing model, if any, when responding to an event -
 					// whereas we're replacing the model in case of an action response.
-					Map existingModel = (Map) request.getPortletSession().getAttribute(IMPLICIT_MODEL_SESSION_ATTRIBUTE);
+					Map<String, Object> existingModel = (Map<String, Object>)
+							request.getPortletSession().getAttribute(IMPLICIT_MODEL_SESSION_ATTRIBUTE);
 					if (existingModel != null) {
 						existingModel.putAll(implicitModel);
 						modelToStore = existingModel;
@@ -401,7 +402,7 @@ public class AnnotationMethodHandlerAdapter extends PortletContentGenerator
 	 * Build a HandlerMethodResolver for the given handler type.
 	 */
 	private PortletHandlerMethodResolver getMethodResolver(Object handler) {
-		Class handlerClass = ClassUtils.getUserClass(handler);
+		Class<?> handlerClass = ClassUtils.getUserClass(handler);
 		PortletHandlerMethodResolver resolver = this.methodResolverCache.get(handlerClass);
 		if (resolver == null) {
 			synchronized (this.methodResolverCache) {
@@ -455,10 +456,10 @@ public class AnnotationMethodHandlerAdapter extends PortletContentGenerator
 			EventMapping eventMapping = AnnotationUtils.findAnnotation(method, EventMapping.class);
 			RequestMapping requestMapping = AnnotationUtils.findAnnotation(method, RequestMapping.class);
 			if (actionMapping != null) {
-				mappingInfo.initPhaseMapping(PortletRequest.ACTION_PHASE, actionMapping.value(), actionMapping.params());
+				mappingInfo.initPhaseMapping(PortletRequest.ACTION_PHASE, actionMapping.name(), actionMapping.params());
 			}
 			if (renderMapping != null) {
-				mappingInfo.initPhaseMapping(PortletRequest.RENDER_PHASE, renderMapping.value(), renderMapping.params());
+				mappingInfo.initPhaseMapping(PortletRequest.RENDER_PHASE, renderMapping.windowState(), renderMapping.params());
 			}
 			if (resourceMapping != null) {
 				mappingInfo.initPhaseMapping(PortletRequest.RESOURCE_PHASE, resourceMapping.value(), new String[0]);
@@ -519,7 +520,7 @@ public class AnnotationMethodHandlerAdapter extends PortletContentGenerator
 		}
 
 		private String determineDefaultPhase(Method handlerMethod) {
-			if (!void.class.equals(handlerMethod.getReturnType())) {
+			if (void.class != handlerMethod.getReturnType()) {
 				return PortletRequest.RENDER_PHASE;
 			}
 			for (Class<?> argType : handlerMethod.getParameterTypes()) {
@@ -554,7 +555,7 @@ public class AnnotationMethodHandlerAdapter extends PortletContentGenerator
 		}
 
 		@Override
-		protected void raiseMissingParameterException(String paramName, Class paramType) throws Exception {
+		protected void raiseMissingParameterException(String paramName, Class<?> paramType) throws Exception {
 			throw new MissingPortletRequestParameterException(paramName, paramType.getSimpleName());
 		}
 
@@ -591,7 +592,7 @@ public class AnnotationMethodHandlerAdapter extends PortletContentGenerator
 		}
 
 		@Override
-		protected Object resolveCookieValue(String cookieName, Class paramType, NativeWebRequest webRequest)
+		protected Object resolveCookieValue(String cookieName, Class<?> paramType, NativeWebRequest webRequest)
 				throws Exception {
 
 			PortletRequest portletRequest = webRequest.getNativeRequest(PortletRequest.class);
@@ -649,7 +650,7 @@ public class AnnotationMethodHandlerAdapter extends PortletContentGenerator
 			else if (Principal.class.isAssignableFrom(parameterType)) {
 				return request.getUserPrincipal();
 			}
-			else if (Locale.class.equals(parameterType)) {
+			else if (Locale.class == parameterType) {
 				return request.getLocale();
 			}
 			else if (InputStream.class.isAssignableFrom(parameterType)) {
@@ -676,7 +677,7 @@ public class AnnotationMethodHandlerAdapter extends PortletContentGenerator
 				}
 				return ((MimeResponse) response).getWriter();
 			}
-			else if (Event.class.equals(parameterType)) {
+			else if (Event.class == parameterType) {
 				if (!(request instanceof EventRequest)) {
 					throw new IllegalStateException("Event can only get obtained from EventRequest");
 				}
@@ -686,7 +687,7 @@ public class AnnotationMethodHandlerAdapter extends PortletContentGenerator
 		}
 
 		@SuppressWarnings("unchecked")
-		public ModelAndView getModelAndView(Method handlerMethod, Class handlerType, Object returnValue, ExtendedModelMap implicitModel,
+		public ModelAndView getModelAndView(Method handlerMethod, Class<?> handlerType, Object returnValue, ExtendedModelMap implicitModel,
 				PortletWebRequest webRequest) {
 			// Invoke custom resolvers if present...
 			if (customModelAndViewResolvers != null) {
@@ -725,7 +726,7 @@ public class AnnotationMethodHandlerAdapter extends PortletContentGenerator
 				return new ModelAndView().addAllObjects(implicitModel);
 			}
 			else if (returnValue instanceof Map) {
-				return new ModelAndView().addAllObjects(implicitModel).addAllObjects((Map) returnValue);
+				return new ModelAndView().addAllObjects(implicitModel).addAllObjects((Map<String, Object>) returnValue);
 			}
 			else if (returnValue instanceof String) {
 				return new ModelAndView((String) returnValue).addAllObjects(implicitModel);
@@ -812,9 +813,9 @@ public class AnnotationMethodHandlerAdapter extends PortletContentGenerator
 					}
 				}
 			}
-			return PortletAnnotationMappingUtils.checkRequestMethod(this.methods, request) &&
+			return (PortletAnnotationMappingUtils.checkRequestMethod(this.methods, request) &&
 					PortletAnnotationMappingUtils.checkParameters(this.params, request) &&
-					PortletAnnotationMappingUtils.checkHeaders(this.headers, request);
+					PortletAnnotationMappingUtils.checkHeaders(this.headers, request));
 		}
 
 		public boolean isBetterMatchThan(RequestMappingInfo other) {

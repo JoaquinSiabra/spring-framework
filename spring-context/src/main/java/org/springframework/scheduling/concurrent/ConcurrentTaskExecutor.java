@@ -25,10 +25,12 @@ import java.util.concurrent.Future;
 import javax.enterprise.concurrent.ManagedExecutors;
 import javax.enterprise.concurrent.ManagedTask;
 
+import org.springframework.core.task.AsyncListenableTaskExecutor;
 import org.springframework.core.task.support.TaskExecutorAdapter;
 import org.springframework.scheduling.SchedulingAwareRunnable;
 import org.springframework.scheduling.SchedulingTaskExecutor;
 import org.springframework.util.ClassUtils;
+import org.springframework.util.concurrent.ListenableFuture;
 
 /**
  * Adapter that takes a {@code java.util.concurrent.Executor} and exposes
@@ -38,8 +40,9 @@ import org.springframework.util.ClassUtils;
  *
  * <p>Autodetects a JSR-236 {@link javax.enterprise.concurrent.ManagedExecutorService}
  * in order to expose {@link javax.enterprise.concurrent.ManagedTask} adapters for it,
- * exposing a long-running hint based on {@link SchedulingAwareRunnable} and an
- * identity name based on the given Runnable/Callable's {@code toString()}.
+ * exposing a long-running hint based on {@link SchedulingAwareRunnable} and an identity
+ * name based on the given Runnable/Callable's {@code toString()}. For JSR-236 style
+ * lookup in a Java EE 7 environment, consider using {@link DefaultManagedTaskExecutor}.
  *
  * <p>Note that there is a pre-built {@link ThreadPoolTaskExecutor} that allows
  * for defining a {@link java.util.concurrent.ThreadPoolExecutor} in bean style,
@@ -53,21 +56,22 @@ import org.springframework.util.ClassUtils;
  * @see java.util.concurrent.ExecutorService
  * @see java.util.concurrent.ThreadPoolExecutor
  * @see java.util.concurrent.Executors
+ * @see DefaultManagedTaskExecutor
  * @see ThreadPoolTaskExecutor
  */
-public class ConcurrentTaskExecutor implements SchedulingTaskExecutor {
+public class ConcurrentTaskExecutor implements AsyncListenableTaskExecutor, SchedulingTaskExecutor {
 
-	private static Class<?> managedExecutorService;
+	private static Class<?> managedExecutorServiceClass;
 
 	static {
 		try {
-			managedExecutorService = ClassUtils.forName(
+			managedExecutorServiceClass = ClassUtils.forName(
 					"javax.enterprise.concurrent.ManagedExecutorService",
 					ConcurrentTaskScheduler.class.getClassLoader());
 		}
 		catch (ClassNotFoundException ex) {
 			// JSR-236 API not available...
-			managedExecutorService = null;
+			managedExecutorServiceClass = null;
 		}
 	}
 
@@ -103,7 +107,7 @@ public class ConcurrentTaskExecutor implements SchedulingTaskExecutor {
 	public final void setConcurrentExecutor(Executor concurrentExecutor) {
 		if (concurrentExecutor != null) {
 			this.concurrentExecutor = concurrentExecutor;
-			if (managedExecutorService != null && managedExecutorService.isInstance(concurrentExecutor)) {
+			if (managedExecutorServiceClass != null && managedExecutorServiceClass.isInstance(concurrentExecutor)) {
 				this.adaptedExecutor = new ManagedTaskExecutorAdapter(concurrentExecutor);
 			}
 			else {
@@ -144,6 +148,16 @@ public class ConcurrentTaskExecutor implements SchedulingTaskExecutor {
 		return this.adaptedExecutor.submit(task);
 	}
 
+	@Override
+	public ListenableFuture<?> submitListenable(Runnable task) {
+		return this.adaptedExecutor.submitListenable(task);
+	}
+
+	@Override
+	public <T> ListenableFuture<T> submitListenable(Callable<T> task) {
+		return this.adaptedExecutor.submitListenable(task);
+	}
+
 	/**
 	 * This task executor prefers short-lived work units.
 	 */
@@ -178,6 +192,16 @@ public class ConcurrentTaskExecutor implements SchedulingTaskExecutor {
 		@Override
 		public <T> Future<T> submit(Callable<T> task) {
 			return super.submit(ManagedTaskBuilder.buildManagedTask(task, task.toString()));
+		}
+
+		@Override
+		public ListenableFuture<?> submitListenable(Runnable task) {
+			return super.submitListenable(ManagedTaskBuilder.buildManagedTask(task, task.toString()));
+		}
+
+		@Override
+		public <T> ListenableFuture<T> submitListenable(Callable<T> task) {
+			return super.submitListenable(ManagedTaskBuilder.buildManagedTask(task, task.toString()));
 		}
 	}
 

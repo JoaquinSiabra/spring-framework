@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -75,6 +75,12 @@ import org.springframework.core.Ordered;
  * proxy- or AspectJ-based advice that weaves the interceptor into the call stack when
  * {@link org.springframework.cache.annotation.Cacheable @Cacheable} methods are invoked.
  *
+ * <p>If the JSR-107 API and Spring's JCache implementation are present, the necessary
+ * components to manage standard cache annotations are also registered. This creates the
+ * proxy- or AspectJ-based advice that weaves the interceptor into the call stack when
+ * methods annotated with {@code CacheResult}, {@code CachePut}, {@code CacheRemove} or
+ * {@code CacheRemoveAll} are invoked.
+ *
  * <p><strong>A bean of type {@link org.springframework.cache.CacheManager CacheManager}
  * must be registered</strong>, as there is no reasonable default that the framework can
  * use as a convention. And whereas the {@code <cache:annotation-driven>} element assumes
@@ -85,11 +91,11 @@ import org.springframework.core.Ordered;
  * <p>For those that wish to establish a more direct relationship between
  * {@code @EnableCaching} and the exact cache manager bean to be used,
  * the {@link CachingConfigurer} callback interface may be implemented - notice the
- * {@code implements} clause and the {@code @Override}-annotated methods below:
+ * the {@code @Override}-annotated methods below:
  * <pre class="code">
  * &#064;Configuration
  * &#064;EnableCaching
- * public class AppConfig implements CachingConfigurer {
+ * public class AppConfig extends CachingConfigurerSupport {
  *     &#064;Bean
  *     public MyService myService() {
  *         // configure and return a class having &#064;Cacheable methods
@@ -122,9 +128,14 @@ import org.springframework.core.Ordered;
  * {@code @EnableCaching} will configure Spring's
  * {@link org.springframework.cache.interceptor.SimpleKeyGenerator SimpleKeyGenerator}
  * for this purpose, but when implementing {@code CachingConfigurer}, a key generator
- * must be provided explicitly. Return {@code new SimpleKeyGenerator()} from this method
- * if no customization is necessary. See {@link CachingConfigurer} Javadoc for further
- * details.
+ * must be provided explicitly. Return {@code null} or {@code new SimpleKeyGenerator()}
+ * from this method if no customization is necessary.
+ *
+ * <p>{@link CachingConfigurer} offers additional customization options: it is recommended
+ * to extend from {@link org.springframework.cache.annotation.CachingConfigurerSupport
+ * CachingConfigurerSupport} that provides a default implementation for all methods which
+ * can be useful if you do not need to customize everything. See {@link CachingConfigurer}
+ * Javadoc for further details.
  *
  * <p>The {@link #mode()} attribute controls how advice is applied; if the mode is
  * {@link AdviceMode#PROXY} (the default), then the other attributes such as
@@ -151,13 +162,12 @@ public @interface EnableCaching {
 	 * Indicate whether subclass-based (CGLIB) proxies are to be created as opposed
 	 * to standard Java interface-based proxies. The default is {@code false}. <strong>
 	 * Applicable only if {@link #mode()} is set to {@link AdviceMode#PROXY}</strong>.
-	 *
 	 * <p>Note that setting this attribute to {@code true} will affect <em>all</em>
-	 * Spring-managed beans requiring proxying, not just those marked with
-	 * {@code @Cacheable}. For example, other beans marked with Spring's
-	 * {@code @Transactional} annotation will be upgraded to subclass proxying at the same
-	 * time. This approach has no negative impact in practice unless one is explicitly
-	 * expecting one type of proxy vs another, e.g. in tests.
+	 * Spring-managed beans requiring proxying, not just those marked with {@code @Cacheable}.
+	 * For example, other beans marked with Spring's {@code @Transactional} annotation will
+	 * be upgraded to subclass proxying at the same time. This approach has no negative
+	 * impact in practice unless one is explicitly expecting one type of proxy vs another,
+	 * e.g. in tests.
 	 */
 	boolean proxyTargetClass() default false;
 
@@ -174,4 +184,5 @@ public @interface EnableCaching {
 	 * The default is {@link Ordered#LOWEST_PRECEDENCE}.
 	 */
 	int order() default Ordered.LOWEST_PRECEDENCE;
+
 }

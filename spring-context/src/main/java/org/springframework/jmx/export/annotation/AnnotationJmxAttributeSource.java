@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,7 +32,6 @@ import org.springframework.jmx.export.metadata.ManagedNotification;
 import org.springframework.jmx.export.metadata.ManagedOperation;
 import org.springframework.jmx.export.metadata.ManagedOperationParameter;
 import org.springframework.jmx.export.metadata.ManagedResource;
-import org.springframework.util.StringUtils;
 import org.springframework.util.StringValueResolver;
 
 /**
@@ -66,23 +65,15 @@ public class AnnotationJmxAttributeSource implements JmxAttributeSource, BeanFac
 		}
 	}
 
-
 	@Override
 	public ManagedResource getManagedResource(Class<?> beanClass) throws InvalidMetadataException {
 		org.springframework.jmx.export.annotation.ManagedResource ann =
-				beanClass.getAnnotation(org.springframework.jmx.export.annotation.ManagedResource.class);
+				AnnotationUtils.getAnnotation(beanClass, org.springframework.jmx.export.annotation.ManagedResource.class);
 		if (ann == null) {
 			return null;
 		}
 		ManagedResource managedResource = new ManagedResource();
 		AnnotationBeanUtils.copyPropertiesToBean(ann, managedResource, this.embeddedValueResolver);
-		if (!"".equals(ann.value()) && !StringUtils.hasLength(managedResource.getObjectName())) {
-			String value = ann.value();
-			if (this.embeddedValueResolver != null) {
-				value = this.embeddedValueResolver.resolveStringValue(value);
-			}
-			managedResource.setObjectName(value);
-		}
 		return managedResource;
 	}
 
@@ -148,8 +139,8 @@ public class AnnotationJmxAttributeSource implements JmxAttributeSource, BeanFac
 
 	@Override
 	public ManagedNotification[] getManagedNotifications(Class<?> clazz) throws InvalidMetadataException {
-		ManagedNotifications notificationsAnn = clazz.getAnnotation(ManagedNotifications.class);
-		if(notificationsAnn == null) {
+		ManagedNotifications notificationsAnn = AnnotationUtils.getAnnotation(clazz, ManagedNotifications.class);
+		if (notificationsAnn == null) {
 			return new ManagedNotification[0];
 		}
 		Annotation[] notifications = notificationsAnn.value();

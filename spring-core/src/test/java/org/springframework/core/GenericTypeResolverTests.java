@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package org.springframework.core;
 
+import java.io.Serializable;
 import java.lang.reflect.Method;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
@@ -35,6 +36,7 @@ import static org.springframework.util.ReflectionUtils.*;
  * @author Juergen Hoeller
  * @author Sam Brannen
  */
+@SuppressWarnings({ "unchecked", "rawtypes" })
 public class GenericTypeResolverTests {
 
 	@Test
@@ -66,29 +68,30 @@ public class GenericTypeResolverTests {
 	@Test
 	public void methodReturnTypes() {
 		assertEquals(Integer.class,
-			resolveReturnTypeArgument(findMethod(MyTypeWithMethods.class, "integer"), MyInterfaceType.class));
+				resolveReturnTypeArgument(findMethod(MyTypeWithMethods.class, "integer"), MyInterfaceType.class));
 		assertEquals(String.class,
-			resolveReturnTypeArgument(findMethod(MyTypeWithMethods.class, "string"), MyInterfaceType.class));
+				resolveReturnTypeArgument(findMethod(MyTypeWithMethods.class, "string"), MyInterfaceType.class));
 		assertEquals(null, resolveReturnTypeArgument(findMethod(MyTypeWithMethods.class, "raw"), MyInterfaceType.class));
 		assertEquals(null,
-			resolveReturnTypeArgument(findMethod(MyTypeWithMethods.class, "object"), MyInterfaceType.class));
+				resolveReturnTypeArgument(findMethod(MyTypeWithMethods.class, "object"), MyInterfaceType.class));
 	}
 
 	@Test
+	@Deprecated
 	public void testResolveType() {
 		Method intMessageMethod = findMethod(MyTypeWithMethods.class, "readIntegerInputMessage", MyInterfaceType.class);
 		MethodParameter intMessageMethodParam = new MethodParameter(intMessageMethod, 0);
 		assertEquals(MyInterfaceType.class,
-			resolveType(intMessageMethodParam.getGenericParameterType(), new HashMap<TypeVariable, Type>()));
+				resolveType(intMessageMethodParam.getGenericParameterType(), new HashMap<TypeVariable, Type>()));
 
 		Method intArrMessageMethod = findMethod(MyTypeWithMethods.class, "readIntegerArrayInputMessage",
-			MyInterfaceType[].class);
+				MyInterfaceType[].class);
 		MethodParameter intArrMessageMethodParam = new MethodParameter(intArrMessageMethod, 0);
 		assertEquals(MyInterfaceType[].class,
-			resolveType(intArrMessageMethodParam.getGenericParameterType(), new HashMap<TypeVariable, Type>()));
+				resolveType(intArrMessageMethodParam.getGenericParameterType(), new HashMap<TypeVariable, Type>()));
 
 		Method genericArrMessageMethod = findMethod(MySimpleTypeWithMethods.class, "readGenericArrayInputMessage",
-			Object[].class);
+				Object[].class);
 		MethodParameter genericArrMessageMethodParam = new MethodParameter(genericArrMessageMethod, 0);
 		Map<TypeVariable, Type> varMap = getTypeVariableMap(MySimpleTypeWithMethods.class);
 		assertEquals(Integer[].class, resolveType(genericArrMessageMethodParam.getGenericParameterType(), varMap));
@@ -96,10 +99,11 @@ public class GenericTypeResolverTests {
 
 	@Test
 	public void testBoundParameterizedType() {
-		assertEquals(B.class, resolveTypeArgument(TestImpl.class, ITest.class));
+		assertEquals(B.class, resolveTypeArgument(TestImpl.class, TestIfc.class));
 	}
 
 	@Test
+	@Deprecated
 	public void testGetTypeVariableMap() throws Exception {
 		Map<TypeVariable, Type> map;
 
@@ -138,10 +142,17 @@ public class GenericTypeResolverTests {
 	}
 
 	@Test
-	public void getGenericsCannotBeResovled() throws Exception {
+	public void getGenericsCannotBeResolved() throws Exception {
 		// SPR-11030
-		Class[] resolved = GenericTypeResolver.resolveTypeArguments(List.class, Iterable.class);
-		assertThat(resolved, equalTo(new Class[] { Object.class }));
+		Class<?>[] resolved = GenericTypeResolver.resolveTypeArguments(List.class, Iterable.class);
+		assertNull(resolved);
+	}
+
+	@Test
+	public void getRawMapTypeCannotBeResolved() throws Exception {
+		// SPR-11052
+		Class<?>[] resolved = GenericTypeResolver.resolveTypeArguments(Map.class, Map.class);
+		assertNull(resolved);
 	}
 
 	@Test
@@ -150,17 +161,27 @@ public class GenericTypeResolverTests {
 		MethodParameter methodParameter = MethodParameter.forMethodOrConstructor(
 				WithArrayBase.class.getDeclaredMethod("array", Object[].class), 0);
 		Class<?> resolved = GenericTypeResolver.resolveParameterType(methodParameter, WithArray.class);
-		assertThat(resolved, equalTo((Class) Object[].class));
+		assertThat(resolved, equalTo((Class<?>) Object[].class));
 	}
 
 	@Test
 	public void getGenericsOnArrayFromReturnCannotBeResolved() throws Exception {
 		// SPR-11044
 		Class<?> resolved = GenericTypeResolver.resolveReturnType(
-				WithArrayBase.class.getDeclaredMethod("array", Object[].class),
-				WithArray.class);
-		assertThat(resolved, equalTo((Class) Object[].class));
+				WithArrayBase.class.getDeclaredMethod("array", Object[].class), WithArray.class);
+		assertThat(resolved, equalTo((Class<?>) Object[].class));
 	}
+
+	@Test
+	public void resolveIncompleteTypeVariables() {
+		// SPR-11763
+		Class<?>[] resolved = GenericTypeResolver.resolveTypeArguments(IdFixingRepository.class, Repository.class);
+		assertNotNull(resolved);
+		assertEquals(2, resolved.length);
+		assertEquals(Object.class, resolved[0]);
+		assertEquals(Long.class, resolved[1]);
+	}
+
 
 	public interface MyInterfaceType<T> {
 	}
@@ -194,7 +215,6 @@ public class GenericTypeResolverTests {
 			return null;
 		}
 
-		@SuppressWarnings("rawtypes")
 		public MyInterfaceType raw() {
 			return null;
 		}
@@ -282,9 +302,9 @@ public class GenericTypeResolverTests {
 
 	class B<T>{}
 
-	class ITest<T>{}
+	class TestIfc<T>{}
 
-	class TestImpl<I extends A, T extends B<I>> extends ITest<T>{
+	class TestImpl<I extends A, T extends B<I>> extends TestIfc<T>{
 	}
 
 	static class TopLevelClass<T> {
@@ -300,11 +320,15 @@ public class GenericTypeResolverTests {
 	static abstract class WithArrayBase<T> {
 
 		public abstract T[] array(T... args);
-
 	}
 
 	static abstract class WithArray<T> extends WithArrayBase<T> {
+	}
 
+	interface Repository<T, ID extends Serializable> {
+	}
+
+	interface IdFixingRepository<T> extends Repository<T, Long> {
 	}
 
 }

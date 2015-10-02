@@ -20,8 +20,8 @@ import java.net.URI;
 
 import org.springframework.util.concurrent.ListenableFuture;
 import org.springframework.web.socket.WebSocketHandler;
+import org.springframework.web.socket.WebSocketHttpHeaders;
 import org.springframework.web.socket.WebSocketSession;
-import org.springframework.web.socket.support.WebSocketHttpHeaders;
 
 /**
  * Contract for initiating a WebSocket request. As an alternative considering using the
@@ -30,7 +30,6 @@ import org.springframework.web.socket.support.WebSocketHttpHeaders;
  *
  * @author Rossen Stoyanchev
  * @since 4.0
- *
  * @see WebSocketConnectionManager
  */
 public interface WebSocketClient {

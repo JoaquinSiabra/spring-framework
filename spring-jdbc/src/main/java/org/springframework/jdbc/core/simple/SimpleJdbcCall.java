@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 package org.springframework.jdbc.core.simple;
 
 import java.util.Arrays;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import javax.sql.DataSource;
 
@@ -53,6 +53,7 @@ import org.springframework.jdbc.core.namedparam.SqlParameterSource;
  * to provide the ability to chain multiple ones together in a "fluent" interface style.
  *
  * @author Thomas Risberg
+ * @author Stephane Nicoll
  * @since 2.5
  * @see java.sql.DatabaseMetaData
  * @see org.springframework.jdbc.core.JdbcTemplate
@@ -123,12 +124,12 @@ public class SimpleJdbcCall extends AbstractJdbcCall implements SimpleJdbcCallOp
 
 	@Override
 	public SimpleJdbcCall useInParameterNames(String... inParameterNames) {
-		setInParameterNames(new HashSet<String>(Arrays.asList(inParameterNames)));
+		setInParameterNames(new LinkedHashSet<String>(Arrays.asList(inParameterNames)));
 		return this;
 	}
 
 	@Override
-	public SimpleJdbcCall returningResultSet(String parameterName, RowMapper rowMapper) {
+	public SimpleJdbcCall returningResultSet(String parameterName, RowMapper<?> rowMapper) {
 		addDeclaredRowMapper(parameterName, rowMapper);
 		return this;
 	}
@@ -136,6 +137,12 @@ public class SimpleJdbcCall extends AbstractJdbcCall implements SimpleJdbcCallOp
 	@Override
 	public SimpleJdbcCall withoutProcedureColumnMetaDataAccess() {
 		setAccessCallParameterMetaData(false);
+		return this;
+	}
+
+	@Override
+	public SimpleJdbcCall withNamedBinding() {
+		setNamedBinding(true);
 		return this;
 	}
 

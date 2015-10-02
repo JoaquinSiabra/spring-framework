@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package org.springframework.web.client;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.util.Collections;
@@ -27,9 +28,11 @@ import java.util.Set;
 
 import org.junit.Before;
 import org.junit.Test;
+
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpInputMessage;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -39,6 +42,7 @@ import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.http.converter.GenericHttpMessageConverter;
 import org.springframework.http.converter.HttpMessageConverter;
+import org.springframework.web.util.DefaultUriTemplateHandler;
 
 import static org.junit.Assert.*;
 import static org.mockito.BDDMockito.*;
@@ -59,6 +63,7 @@ public class RestTemplateTests {
 
 	private ResponseErrorHandler errorHandler;
 
+	@SuppressWarnings("rawtypes")
 	private HttpMessageConverter converter;
 
 	@Before
@@ -68,9 +73,9 @@ public class RestTemplateTests {
 		response = mock(ClientHttpResponse.class);
 		errorHandler = mock(ResponseErrorHandler.class);
 		converter = mock(HttpMessageConverter.class);
-		template = new RestTemplate(requestFactory);
+		template = new RestTemplate(Collections.<HttpMessageConverter<?>>singletonList(converter));
+		template.setRequestFactory(requestFactory);
 		template.setErrorHandler(errorHandler);
-		template.setMessageConverters(Collections.<HttpMessageConverter<?>>singletonList(converter));
 	}
 
 	@Test
@@ -168,14 +173,15 @@ public class RestTemplateTests {
 		given(request.getHeaders()).willReturn(requestHeaders);
 		given(request.execute()).willReturn(response);
 		given(errorHandler.hasError(response)).willReturn(false);
+		String expected = "Hello World";
 		HttpHeaders responseHeaders = new HttpHeaders();
 		responseHeaders.setContentType(textPlain);
 		responseHeaders.setContentLength(10);
 		given(response.getStatusCode()).willReturn(HttpStatus.OK);
 		given(response.getHeaders()).willReturn(responseHeaders);
+		given(response.getBody()).willReturn(new ByteArrayInputStream(expected.getBytes()));
 		given(converter.canRead(String.class, textPlain)).willReturn(true);
-		String expected = "Hello World";
-		given(converter.read(String.class, response)).willReturn(expected);
+		given(converter.read(eq(String.class), any(HttpInputMessage.class))).willReturn(expected);
 		HttpStatus status = HttpStatus.OK;
 		given(response.getStatusCode()).willReturn(status);
 		given(response.getStatusText()).willReturn(status.getReasonPhrase());
@@ -203,6 +209,7 @@ public class RestTemplateTests {
 		responseHeaders.setContentLength(10);
 		given(response.getStatusCode()).willReturn(HttpStatus.OK);
 		given(response.getHeaders()).willReturn(responseHeaders);
+		given(response.getBody()).willReturn(new ByteArrayInputStream("Foo".getBytes()));
 		given(converter.canRead(String.class, contentType)).willReturn(false);
 		HttpStatus status = HttpStatus.OK;
 		given(response.getStatusCode()).willReturn(status);
@@ -230,14 +237,15 @@ public class RestTemplateTests {
 		given(request.getHeaders()).willReturn(requestHeaders);
 		given(request.execute()).willReturn(response);
 		given(errorHandler.hasError(response)).willReturn(false);
+		String expected = "Hello World";
 		HttpHeaders responseHeaders = new HttpHeaders();
 		responseHeaders.setContentType(textPlain);
 		responseHeaders.setContentLength(10);
 		given(response.getStatusCode()).willReturn(HttpStatus.OK);
 		given(response.getHeaders()).willReturn(responseHeaders);
+		given(response.getBody()).willReturn(new ByteArrayInputStream(expected.getBytes()));
 		given(converter.canRead(String.class, textPlain)).willReturn(true);
-		String expected = "Hello World";
-		given(converter.read(String.class, response)).willReturn(expected);
+		given(converter.read(eq(String.class), any(HttpInputMessage.class))).willReturn(expected);
 		given(response.getStatusCode()).willReturn(HttpStatus.OK);
 		HttpStatus status = HttpStatus.OK;
 		given(response.getStatusCode()).willReturn(status);
@@ -248,6 +256,35 @@ public class RestTemplateTests {
 		assertEquals("Invalid Accept header", textPlain.toString(), requestHeaders.getFirst("Accept"));
 		assertEquals("Invalid Content-Type header", textPlain, result.getHeaders().getContentType());
 		assertEquals("Invalid status code", HttpStatus.OK, result.getStatusCode());
+
+		verify(response).close();
+	}
+
+	@Test
+	public void getForObjectWithCustomUriTemplateHandler() throws Exception {
+
+		DefaultUriTemplateHandler uriTemplateHandler = new DefaultUriTemplateHandler();
+		uriTemplateHandler.setParsePath(true);
+		template.setUriTemplateHandler(uriTemplateHandler);
+
+		URI expectedUri = new URI("http://example.com/hotels/1/pic/pics%2Flogo.png/size/150x150");
+		given(requestFactory.createRequest(expectedUri, HttpMethod.GET)).willReturn(request);
+
+		given(request.getHeaders()).willReturn(new HttpHeaders());
+		given(request.execute()).willReturn(response);
+		given(errorHandler.hasError(response)).willReturn(false);
+
+		given(response.getStatusCode()).willReturn(HttpStatus.OK);
+		given(response.getHeaders()).willReturn(new HttpHeaders());
+		given(response.getBody()).willReturn(null);
+
+		Map<String, String> uriVariables = new HashMap<String, String>(2);
+		uriVariables.put("hotel", "1");
+		uriVariables.put("publicpath", "pics/logo.png");
+		uriVariables.put("scale", "150x150");
+
+		String url = "http://example.com/hotels/{hotel}/pic/{publicpath}/size/{scale}";
+		template.getForObject(url, String.class, uriVariables);
 
 		verify(response).close();
 	}
@@ -403,14 +440,15 @@ public class RestTemplateTests {
 		converter.write(request, null, this.request);
 		given(this.request.execute()).willReturn(response);
 		given(errorHandler.hasError(response)).willReturn(false);
+		Integer expected = 42;
 		HttpHeaders responseHeaders = new HttpHeaders();
 		responseHeaders.setContentType(textPlain);
 		responseHeaders.setContentLength(10);
 		given(response.getStatusCode()).willReturn(HttpStatus.OK);
 		given(response.getHeaders()).willReturn(responseHeaders);
-		Integer expected = 42;
+		given(response.getBody()).willReturn(new ByteArrayInputStream(expected.toString().getBytes()));
 		given(converter.canRead(Integer.class, textPlain)).willReturn(true);
-		given(converter.read(Integer.class, response)).willReturn(expected);
+		given(converter.read(eq(Integer.class), any(HttpInputMessage.class))).willReturn(expected);
 		HttpStatus status = HttpStatus.OK;
 		given(response.getStatusCode()).willReturn(status);
 		given(response.getStatusText()).willReturn(status.getReasonPhrase());
@@ -435,14 +473,15 @@ public class RestTemplateTests {
 		converter.write(request, null, this.request);
 		given(this.request.execute()).willReturn(response);
 		given(errorHandler.hasError(response)).willReturn(false);
+		Integer expected = 42;
 		HttpHeaders responseHeaders = new HttpHeaders();
 		responseHeaders.setContentType(textPlain);
 		responseHeaders.setContentLength(10);
 		given(response.getStatusCode()).willReturn(HttpStatus.OK);
 		given(response.getHeaders()).willReturn(responseHeaders);
-		Integer expected = 42;
+		given(response.getBody()).willReturn(new ByteArrayInputStream(expected.toString().getBytes()));
 		given(converter.canRead(Integer.class, textPlain)).willReturn(true);
-		given(converter.read(Integer.class, response)).willReturn(expected);
+		given(converter.read(eq(Integer.class), any(HttpInputMessage.class))).willReturn(expected);
 		given(response.getStatusCode()).willReturn(HttpStatus.OK);
 		HttpStatus status = HttpStatus.OK;
 		given(response.getStatusCode()).willReturn(status);
@@ -613,14 +652,16 @@ public class RestTemplateTests {
 		converter.write(body, null, this.request);
 		given(this.request.execute()).willReturn(response);
 		given(errorHandler.hasError(response)).willReturn(false);
+		Integer expected = 42;
 		HttpHeaders responseHeaders = new HttpHeaders();
 		responseHeaders.setContentType(MediaType.TEXT_PLAIN);
 		responseHeaders.setContentLength(10);
 		given(response.getStatusCode()).willReturn(HttpStatus.OK);
 		given(response.getHeaders()).willReturn(responseHeaders);
-		Integer expected = 42;
+		given(response.getBody()).willReturn(new ByteArrayInputStream(expected.toString().getBytes()));
 		given(converter.canRead(Integer.class, MediaType.TEXT_PLAIN)).willReturn(true);
 		given(converter.read(Integer.class, response)).willReturn(expected);
+		given(converter.read(eq(Integer.class), any(HttpInputMessage.class))).willReturn(expected);
 		given(response.getStatusCode()).willReturn(HttpStatus.OK);
 		HttpStatus status = HttpStatus.OK;
 		given(response.getStatusCode()).willReturn(status);
@@ -640,6 +681,7 @@ public class RestTemplateTests {
 	}
 
 	@Test
+	@SuppressWarnings("rawtypes")
 	public void exchangeParameterizedType() throws Exception {
 		GenericHttpMessageConverter converter = mock(GenericHttpMessageConverter.class);
 		template.setMessageConverters(Collections.<HttpMessageConverter<?>>singletonList(converter));
@@ -655,14 +697,15 @@ public class RestTemplateTests {
 		converter.write(requestBody, null, this.request);
 		given(this.request.execute()).willReturn(response);
 		given(errorHandler.hasError(response)).willReturn(false);
+		List<Integer> expected = Collections.singletonList(42);
 		HttpHeaders responseHeaders = new HttpHeaders();
 		responseHeaders.setContentType(MediaType.TEXT_PLAIN);
 		responseHeaders.setContentLength(10);
 		given(response.getStatusCode()).willReturn(HttpStatus.OK);
 		given(response.getHeaders()).willReturn(responseHeaders);
-		List<Integer> expected = Collections.singletonList(42);
+		given(response.getBody()).willReturn(new ByteArrayInputStream(new Integer(42).toString().getBytes()));
 		given(converter.canRead(intList.getType(), null, MediaType.TEXT_PLAIN)).willReturn(true);
-		given(converter.read(intList.getType(), null, response)).willReturn(expected);
+		given(converter.read(eq(intList.getType()), eq(null), any(HttpInputMessage.class))).willReturn(expected);
 		given(response.getStatusCode()).willReturn(HttpStatus.OK);
 		HttpStatus status = HttpStatus.OK;
 		given(response.getStatusCode()).willReturn(status);

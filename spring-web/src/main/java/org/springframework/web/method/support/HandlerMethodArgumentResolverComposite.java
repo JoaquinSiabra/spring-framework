@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,6 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
 import org.springframework.core.MethodParameter;
-import org.springframework.util.Assert;
 import org.springframework.web.bind.support.WebDataBinderFactory;
 import org.springframework.web.context.request.NativeWebRequest;
 
@@ -61,21 +60,21 @@ public class HandlerMethodArgumentResolverComposite implements HandlerMethodArgu
 	 */
 	@Override
 	public boolean supportsParameter(MethodParameter parameter) {
-		return getArgumentResolver(parameter) != null;
+		return (getArgumentResolver(parameter) != null);
 	}
 
 	/**
 	 * Iterate over registered {@link HandlerMethodArgumentResolver}s and invoke the one that supports it.
-	 * @exception IllegalStateException if no suitable {@link HandlerMethodArgumentResolver} is found.
+	 * @throws IllegalStateException if no suitable {@link HandlerMethodArgumentResolver} is found.
 	 */
 	@Override
-	public Object resolveArgument(
-			MethodParameter parameter, ModelAndViewContainer mavContainer,
-			NativeWebRequest webRequest, WebDataBinderFactory binderFactory)
-			throws Exception {
+	public Object resolveArgument(MethodParameter parameter, ModelAndViewContainer mavContainer,
+			NativeWebRequest webRequest, WebDataBinderFactory binderFactory) throws Exception {
 
 		HandlerMethodArgumentResolver resolver = getArgumentResolver(parameter);
-		Assert.notNull(resolver, "Unknown parameter type [" + parameter.getParameterType().getName() + "]");
+		if (resolver == null) {
+			throw new IllegalArgumentException("Unknown parameter type [" + parameter.getParameterType().getName() + "]");
+		}
 		return resolver.resolveArgument(parameter, mavContainer, webRequest, binderFactory);
 	}
 
@@ -103,18 +102,17 @@ public class HandlerMethodArgumentResolverComposite implements HandlerMethodArgu
 	/**
 	 * Add the given {@link HandlerMethodArgumentResolver}.
 	 */
-	public HandlerMethodArgumentResolverComposite addResolver(HandlerMethodArgumentResolver argumentResolver) {
-		this.argumentResolvers.add(argumentResolver);
+	public HandlerMethodArgumentResolverComposite addResolver(HandlerMethodArgumentResolver resolver) {
+		this.argumentResolvers.add(resolver);
 		return this;
 	}
 
 	/**
 	 * Add the given {@link HandlerMethodArgumentResolver}s.
 	 */
-	public HandlerMethodArgumentResolverComposite addResolvers(
-			List<? extends HandlerMethodArgumentResolver> argumentResolvers) {
-		if (argumentResolvers != null) {
-			for (HandlerMethodArgumentResolver resolver : argumentResolvers) {
+	public HandlerMethodArgumentResolverComposite addResolvers(List<? extends HandlerMethodArgumentResolver> resolvers) {
+		if (resolvers != null) {
+			for (HandlerMethodArgumentResolver resolver : resolvers) {
 				this.argumentResolvers.add(resolver);
 			}
 		}
